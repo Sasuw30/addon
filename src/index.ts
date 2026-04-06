@@ -7,13 +7,9 @@ import express, { NextFunction, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import winston from 'winston';
 import { ConfigureController, ExtractController, ManifestController, StreamController } from './controller';
-import { BlockedError, logErrorAndReturnNiceString } from './error';
 import { createExtractors, ExtractorRegistry } from './extractor';
 import { createSources, Source } from './source';
-import { HomeCine } from './source/HomeCine';
-import { MeineCloud } from './source/MeineCloud';
-import { MostraGuarda } from './source/MostraGuarda';
-import { clearCache, contextFromRequestAndResponse, envGet, envIsProd, Fetcher, StreamResolver } from './utils';
+import { clearCache, envGet, envIsProd, Fetcher, StreamResolver } from './utils';
 
 if (envIsProd()) {
   console.log = console.warn = console.error = console.info = console.debug = () => { /* disable in favor of logger */ };
@@ -108,60 +104,8 @@ addon.get('/ready', async (_req: Request, res: Response) => {
   res.json({ status: 'ok' });
 });
 
-let lastLiveProbeRequestsTimestamp = 0;
-addon.get('/live', async (req: Request, res: Response) => {
-  const ctx = contextFromRequestAndResponse(req, res);
-
-  const sources: Source[] = [
-    new HomeCine(fetcher),
-    new MeineCloud(fetcher),
-    new MostraGuarda(fetcher),
-  ];
-  const hrefs = [
-    ...sources.map(source => source.baseUrl),
-    'https://cloudnestra.com',
-  ];
-
-  const results = new Map<string, string>();
-
-  let blockedCount = 0;
-  let errorCount = 0;
-
-  const fetchFactories = hrefs.map(href => async () => {
-    const url = new URL(href);
-
-    try {
-      await fetcher.head(ctx, url);
-      results.set(url.host, 'ok');
-    } catch (error) {
-      if (error instanceof BlockedError) {
-        results.set(url.host, 'blocked');
-        blockedCount++;
-      } else {
-        results.set(url.host, 'error');
-        errorCount++;
-      }
-
-      logErrorAndReturnNiceString(ctx, logger, href, error);
-    }
-  });
-
-  if (Date.now() - lastLiveProbeRequestsTimestamp > 60000 || 'force' in req.query) { // every minute
-    await Promise.all(fetchFactories.map(fn => fn()));
-    lastLiveProbeRequestsTimestamp = Date.now();
-  }
-
-  const details = Object.fromEntries(results);
-
-  if (blockedCount > 0) {
-    // TODO: fail health check and try to get a clean IP if infra is ready
-    logger.warn('IP might be not clean and leading to blocking.', ctx);
-    res.json({ status: 'ok', details });
-  } else if (errorCount === sources.length) {
-    res.status(503).json({ status: 'error', details });
-  } else {
-    res.json({ status: 'ok', ipStatus: 'ok', details });
-  }
+addon.get('/live', async (_req: Request, res: Response) => {
+  res.json({ status: 'ok' });
 });
 
 addon.get('/stats', async (_req: Request, res: Response) => {
