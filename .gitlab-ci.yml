@@ -1,0 +1,16 @@
+stages:
+  - test
+
+test:
+  stage: test
+  image: node:24
+  cache:
+    key:
+      files:
+        - package-lock.json
+    paths:
+      - .npm/
+  before_script:
+    - npm ci --cache .npm --prefer-offline
+  script:
+    - npm run ci
